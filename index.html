@@ -20,13 +20,13 @@
   </table>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwsRuVHgBCYuJSHHx9T5VdgUan4E7DxuOVaMdqRDPqO-C_JjfI0l6fy8HGrzmgCcl_M/exec";
+    const API_URL = "https://corsproxy.io/?https://script.google.com/macros/s/AKfycbwsRuVHgBCYuJSHHx9T5VdgUan4E7DxuOVaMdqRDPqO-C_JjfI0l6fy8HGrzmgCcl_M/exec";
 
-    const normalize = (str) =>
+  const normalize = (str) =>
       str?.toString().toLowerCase().replace(/\s+/g, "").trim();
 
     const parseCSV = (text) => {
-      const rows = text.split("\n").map(r => r.trim()).filter(Boolean);
+      const rows = text.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
       const delimiter = rows[0].includes(";") ? ";" : rows[0].includes("\t") ? "\t" : ",";
       const headers = rows[0].split(delimiter).map(h => normalize(h));
 
@@ -50,58 +50,66 @@
     };
 
     document.getElementById("fileInput").addEventListener("change", async (e) => {
-      const file = e.target.files[0];
-      const text = await file.text();
-      const csvData = parseCSV(text);
+      try {
+        const file = e.target.files[0];
+        const text = await file.text();
+        const csvData = parseCSV(text);
 
-      const filtered = csvData.map(r => ({
-        sellerId: r["sellerid"],
-        shipmentId: r["shipmentid"],
-        weight: Number(r["weight"]),
-        height: Number(r["height"]),
-        width: Number(r["width"]),
-        length: Number(r["length"]),
-      })).filter(r => r.shipmentId && classify(r));
+        const filtered = csvData.map(r => ({
+          sellerId: r["sellerid"],
+          shipmentId: r["shipmentid"],
+          weight: Number(r["weight"]),
+          height: Number(r["height"]),
+          width: Number(r["width"]),
+          length: Number(r["length"]),
+        })).filter(r => r.shipmentId && classify(r));
 
-      const apiRes = await fetch(API_URL);
-      const apiRaw = await apiRes.json();
+        // 🔥 CAMBIO 2: fetch con manejo de error real
+        const apiRes = await fetch(API_URL);
+        if (!apiRes.ok) throw new Error("Error API: " + apiRes.status);
 
-      // normalizar API
-      const apiData = apiRaw.map(a => ({
-        shipmentId: a.ShipmentID || a["Shipment ID"] || a.shipmentId,
-        weight: Number(a.Weight || a.weight),
-        height: Number(a.Height || a.height),
-        width: Number(a.Width || a.width),
-        length: Number(a.Length || a.length),
-      }));
+        const apiRaw = await apiRes.json();
 
-      const tbody = document.querySelector("#table tbody");
-      tbody.innerHTML = "";
+        const apiData = apiRaw.map(a => ({
+          shipmentId: a.shipmentid || a["shipment_id"] || a["shipment id"],
+          weight: Number(a.weight),
+          height: Number(a.height),
+          width: Number(a.width),
+          length: Number(a.length),
+        }));
 
-      filtered.forEach(csvItem => {
-        const apiItem = apiData.find(a => a.shipmentId == csvItem.shipmentId);
-        if (!apiItem) return;
+        const tbody = document.querySelector("#table tbody");
+        tbody.innerHTML = "";
 
-        const mismatch =
-          apiItem.weight !== csvItem.weight ||
-          apiItem.height !== csvItem.height ||
-          apiItem.width !== csvItem.width ||
-          apiItem.length !== csvItem.length;
+        filtered.forEach(csvItem => {
+          const apiItem = apiData.find(a => a.shipmentId == csvItem.shipmentId);
+          if (!apiItem) return;
 
-        if (mismatch) {
-          const tr = document.createElement("tr");
+          const mismatch =
+            apiItem.weight !== csvItem.weight ||
+            apiItem.height !== csvItem.height ||
+            apiItem.width !== csvItem.width ||
+            apiItem.length !== csvItem.length;
 
-          tr.innerHTML = `
-            <td>${csvItem.sellerId}</td>
-            <td>${csvItem.shipmentId}</td>
-            <td>${classify(csvItem)}</td>
-            <td>W:${csvItem.weight} H:${csvItem.height} W:${csvItem.width} L:${csvItem.length}</td>
-            <td>W:${apiItem.weight} H:${apiItem.height} W:${apiItem.width} L:${apiItem.length}</td>
-          `;
+          if (mismatch) {
+            const tr = document.createElement("tr");
 
-          tbody.appendChild(tr);
-        }
-      });
+            tr.innerHTML = `
+              <td>${csvItem.sellerId}</td>
+              <td>${csvItem.shipmentId}</td>
+              <td>${classify(csvItem)}</td>
+              <td>W:${csvItem.weight} H:${csvItem.height} W:${csvItem.width} L:${csvItem.length}</td>
+              <td>W:${apiItem.weight} H:${apiItem.height} W:${apiItem.width} L:${apiItem.length}</td>
+            `;
+
+            tbody.appendChild(tr);
+          }
+        });
+
+      } catch (err) {
+        alert("ERROR: " + err.message);
+        console.error(err);
+      }
     });
   </script>
 </body>
