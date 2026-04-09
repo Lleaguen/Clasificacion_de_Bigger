@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>CSV Compare</title>
+</head>
+<body>
+  <input type="file" id="fileInput" accept=".csv" />
+  <table border="1" id="table" style="margin-top:20px;">
+    <thead>
+      <tr>
+        <th>Seller</th>
+        <th>Shipment</th>
+        <th>Type</th>
+        <th>CSV</th>
+        <th>API</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbxGO8hU9_km_mjYWyiz7PKEmVxf4GQKdelZNd3I6LlsQN-bCzGiBaj0aZBIZr8uBjM4/exec";
+
+    const parseCSV = (text) => {
+      const rows = text.split("\n").map(r => r.trim()).filter(Boolean);
+      const delimiter = rows[0].includes(";") ? ";" : rows[0].includes("\t") ? "\t" : ",";
+      const headers = rows[0].split(delimiter).map(h => h.trim());
+
+      return rows.slice(1).map(row => {
+        const values = row.split(delimiter);
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = values[i]?.trim());
+        return obj;
+      });
+    };
+
+    const classify = (item) => {
+      const w = Number(item.Weight);
+      const h = Number(item.Height);
+      const wi = Number(item.Width);
+      const l = Number(item.Length);
+
+      if (h > 2 || wi > 2 || l > 2 || w > 50) return "super bigger";
+      if (h > 1.5 || wi > 1.5 || l > 1.5 || w > 30) return "bigger";
+      return null;
+    };
+
+    document.getElementById("fileInput").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      const text = await file.text();
+      const csvData = parseCSV(text);
+
+      const filtered = csvData.map(r => ({
+        sellerId: r["Seller ID"],
+        shipmentId: r["Shipment ID"],
+        Weight: Number(r["Weight"]),
+        Height: Number(r["Height"]),
+        Width: Number(r["Width"]),
+        Length: Number(r["Length"]),
+      })).filter(r => classify(r));
+
+      const apiRes = await fetch(API_URL);
+      const apiData = await apiRes.json();
+
+      const tbody = document.querySelector("#table tbody");
+      tbody.innerHTML = "";
+
+      filtered.forEach(csvItem => {
+        const apiItem = apiData.find(a => a.ShipmentID == csvItem.shipmentId);
+        if (!apiItem) return;
+
+        const mismatch =
+          Number(apiItem.Weight) !== csvItem.Weight ||
+          Number(apiItem.Height) !== csvItem.Height ||
+          Number(apiItem.Width) !== csvItem.Width ||
+          Number(apiItem.Length) !== csvItem.Length;
+
+        if (mismatch) {
+          const tr = document.createElement("tr");
+
+          tr.innerHTML = `
+            <td>${csvItem.sellerId}</td>
+            <td>${csvItem.shipmentId}</td>
+            <td>${classify(csvItem)}</td>
+            <td>W:${csvItem.Weight} H:${csvItem.Height} W:${csvItem.Width} L:${csvItem.Length}</td>
+            <td>W:${apiItem.Weight} H:${apiItem.Height} W:${apiItem.Width} L:${apiItem.Length}</td>
+          `;
+
+          tbody.appendChild(tr);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
