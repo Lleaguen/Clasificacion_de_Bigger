@@ -22,10 +22,13 @@
   <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbxGO8hU9_km_mjYWyiz7PKEmVxf4GQKdelZNd3I6LlsQN-bCzGiBaj0aZBIZr8uBjM4/exec";
 
+    const normalize = (str) =>
+      str?.toString().toLowerCase().replace(/\s+/g, "").trim();
+
     const parseCSV = (text) => {
       const rows = text.split("\n").map(r => r.trim()).filter(Boolean);
       const delimiter = rows[0].includes(";") ? ";" : rows[0].includes("\t") ? "\t" : ",";
-      const headers = rows[0].split(delimiter).map(h => h.trim());
+      const headers = rows[0].split(delimiter).map(h => normalize(h));
 
       return rows.slice(1).map(row => {
         const values = row.split(delimiter);
@@ -36,10 +39,10 @@
     };
 
     const classify = (item) => {
-      const w = Number(item.Weight);
-      const h = Number(item.Height);
-      const wi = Number(item.Width);
-      const l = Number(item.Length);
+      const w = Number(item.weight);
+      const h = Number(item.height);
+      const wi = Number(item.width);
+      const l = Number(item.length);
 
       if (h > 2 || wi > 2 || l > 2 || w > 50) return "super bigger";
       if (h > 1.5 || wi > 1.5 || l > 1.5 || w > 30) return "bigger";
@@ -52,29 +55,38 @@
       const csvData = parseCSV(text);
 
       const filtered = csvData.map(r => ({
-        sellerId: r["Seller ID"],
-        shipmentId: r["Shipment ID"],
-        Weight: Number(r["Weight"]),
-        Height: Number(r["Height"]),
-        Width: Number(r["Width"]),
-        Length: Number(r["Length"]),
-      })).filter(r => classify(r));
+        sellerId: r["sellerid"],
+        shipmentId: r["shipmentid"],
+        weight: Number(r["weight"]),
+        height: Number(r["height"]),
+        width: Number(r["width"]),
+        length: Number(r["length"]),
+      })).filter(r => r.shipmentId && classify(r));
 
       const apiRes = await fetch(API_URL);
-      const apiData = await apiRes.json();
+      const apiRaw = await apiRes.json();
+
+      // normalizar API
+      const apiData = apiRaw.map(a => ({
+        shipmentId: a.ShipmentID || a["Shipment ID"] || a.shipmentId,
+        weight: Number(a.Weight || a.weight),
+        height: Number(a.Height || a.height),
+        width: Number(a.Width || a.width),
+        length: Number(a.Length || a.length),
+      }));
 
       const tbody = document.querySelector("#table tbody");
       tbody.innerHTML = "";
 
       filtered.forEach(csvItem => {
-        const apiItem = apiData.find(a => a.ShipmentID == csvItem.shipmentId);
+        const apiItem = apiData.find(a => a.shipmentId == csvItem.shipmentId);
         if (!apiItem) return;
 
         const mismatch =
-          Number(apiItem.Weight) !== csvItem.Weight ||
-          Number(apiItem.Height) !== csvItem.Height ||
-          Number(apiItem.Width) !== csvItem.Width ||
-          Number(apiItem.Length) !== csvItem.Length;
+          apiItem.weight !== csvItem.weight ||
+          apiItem.height !== csvItem.height ||
+          apiItem.width !== csvItem.width ||
+          apiItem.length !== csvItem.length;
 
         if (mismatch) {
           const tr = document.createElement("tr");
@@ -83,8 +95,8 @@
             <td>${csvItem.sellerId}</td>
             <td>${csvItem.shipmentId}</td>
             <td>${classify(csvItem)}</td>
-            <td>W:${csvItem.Weight} H:${csvItem.Height} W:${csvItem.Width} L:${csvItem.Length}</td>
-            <td>W:${apiItem.Weight} H:${apiItem.Height} W:${apiItem.Width} L:${apiItem.Length}</td>
+            <td>W:${csvItem.weight} H:${csvItem.height} W:${csvItem.width} L:${csvItem.length}</td>
+            <td>W:${apiItem.weight} H:${apiItem.height} W:${apiItem.width} L:${apiItem.length}</td>
           `;
 
           tbody.appendChild(tr);
