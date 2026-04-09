@@ -22,95 +22,111 @@
   <script>
     const API_URL = "https://corsproxy.io/?https://script.google.com/macros/s/AKfycbwsRuVHgBCYuJSHHx9T5VdgUan4E7DxuOVaMdqRDPqO-C_JjfI0l6fy8HGrzmgCcl_M/exec";
 
-  const normalize = (str) =>
-      str?.toString().toLowerCase().replace(/\s+/g, "").trim();
+ const normalize = (str) =>
+  str?.toString().toLowerCase().replace(/\s+/g, "").trim();
 
-    const parseCSV = (text) => {
-      const rows = text.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
-      const delimiter = rows[0].includes(";") ? ";" : rows[0].includes("\t") ? "\t" : ",";
-      const headers = rows[0].split(delimiter).map(h => normalize(h));
+const parseCSV = (text) => {
+  const rows = text.split(/\r?\n/).filter(Boolean);
 
-      return rows.slice(1).map(row => {
-        const values = row.split(delimiter);
-        const obj = {};
-        headers.forEach((h, i) => obj[h] = values[i]?.trim());
-        return obj;
-      });
-    };
+  if (!rows.length) throw new Error("CSV vacío");
 
-    const classify = (item) => {
-      const w = Number(item.weight);
-      const h = Number(item.height);
-      const wi = Number(item.width);
-      const l = Number(item.length);
+  const delimiter = rows[0].includes(";")
+    ? ";"
+    : rows[0].includes("\t")
+    ? "\t"
+    : ",";
 
-      if (h > 2 || wi > 2 || l > 2 || w > 50) return "super bigger";
-      if (h > 1.5 || wi > 1.5 || l > 1.5 || w > 30) return "bigger";
-      return null;
-    };
+  const headers = rows[0].split(delimiter).map(h => normalize(h));
 
-    document.getElementById("fileInput").addEventListener("change", async (e) => {
-      try {
-        const file = e.target.files[0];
-        const text = await file.text();
-        const csvData = parseCSV(text);
+  return rows.slice(1).map(row => {
+    const values = row.split(delimiter);
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = values[i]);
+    return obj;
+  });
+};
 
-        const filtered = csvData.map(r => ({
-          sellerId: r["sellerid"],
-          shipmentId: r["shipmentid"],
-          weight: Number(r["weight"]),
-          height: Number(r["height"]),
-          width: Number(r["width"]),
-          length: Number(r["length"]),
-        })).filter(r => r.shipmentId && classify(r));
+const get = (obj, keys) => {
+  for (let k of keys) {
+    if (obj[k] !== undefined) return obj[k];
+  }
+  return null;
+};
 
-        // 🔥 CAMBIO 2: fetch con manejo de error real
-        const apiRes = await fetch(API_URL);
-        if (!apiRes.ok) throw new Error("Error API: " + apiRes.status);
+const classify = (item) => {
+  const w = Number(item.weight);
+  const h = Number(item.height);
+  const wi = Number(item.width);
+  const l = Number(item.length);
 
-        const apiRaw = await apiRes.json();
+  if (h > 2 || wi > 2 || l > 2 || w > 50) return "super bigger";
+  if (h > 1.5 || wi > 1.5 || l > 1.5 || w > 30) return "bigger";
+  return null;
+};
 
-        const apiData = apiRaw.map(a => ({
-          shipmentId: a.shipmentid || a["shipment_id"] || a["shipment id"],
-          weight: Number(a.weight),
-          height: Number(a.height),
-          width: Number(a.width),
-          length: Number(a.length),
-        }));
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+  try {
+    const file = e.target.files[0];
+    if (!file) throw new Error("No seleccionaste archivo");
 
-        const tbody = document.querySelector("#table tbody");
-        tbody.innerHTML = "";
+    const text = await file.text();
+    const csvData = parseCSV(text);
 
-        filtered.forEach(csvItem => {
-          const apiItem = apiData.find(a => a.shipmentId == csvItem.shipmentId);
-          if (!apiItem) return;
+    const mapped = csvData.map(r => ({
+      sellerId: get(r, ["sellerid","seller_id","seller"]),
+      shipmentId: get(r, ["shipmentid","shipment_id","shipment"]),
+      weight: Number(get(r, ["weight","weitght"])),
+      height: Number(get(r, ["height"])),
+      width: Number(get(r, ["width"])),
+      length: Number(get(r, ["length","lenght"]))
+    }));
 
-          const mismatch =
-            apiItem.weight !== csvItem.weight ||
-            apiItem.height !== csvItem.height ||
-            apiItem.width !== csvItem.width ||
-            apiItem.length !== csvItem.length;
+    const filtered = mapped.filter(r => r.shipmentId && classify(r));
 
-          if (mismatch) {
-            const tr = document.createElement("tr");
+    const apiRes = await fetch(API_URL);
+    const apiRaw = await apiRes.json();
 
-            tr.innerHTML = `
-              <td>${csvItem.sellerId}</td>
-              <td>${csvItem.shipmentId}</td>
-              <td>${classify(csvItem)}</td>
-              <td>W:${csvItem.weight} H:${csvItem.height} W:${csvItem.width} L:${csvItem.length}</td>
-              <td>W:${apiItem.weight} H:${apiItem.height} W:${apiItem.width} L:${apiItem.length}</td>
-            `;
+    const apiData = apiRaw.map(a => ({
+      shipmentId: a.shipmentid || a["shipment_id"],
+      weight: Number(a.weight),
+      height: Number(a.height),
+      width: Number(a.width),
+      length: Number(a.length),
+    }));
 
-            tbody.appendChild(tr);
-          }
-        });
+    const tbody = document.querySelector("#table tbody");
+    tbody.innerHTML = "";
 
-      } catch (err) {
-        alert("ERROR: " + err.message);
-        console.error(err);
+    filtered.forEach(csvItem => {
+      const apiItem = apiData.find(a => a.shipmentId == csvItem.shipmentId);
+      if (!apiItem) return;
+
+      const mismatch =
+        apiItem.weight !== csvItem.weight ||
+        apiItem.height !== csvItem.height ||
+        apiItem.width !== csvItem.width ||
+        apiItem.length !== csvItem.length;
+
+      if (mismatch) {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+          <td>${csvItem.sellerId}</td>
+          <td>${csvItem.shipmentId}</td>
+          <td>${classify(csvItem)}</td>
+          <td>${JSON.stringify(csvItem)}</td>
+          <td>${JSON.stringify(apiItem)}</td>
+        `;
+
+        tbody.appendChild(tr);
       }
     });
-  </script>
+
+  } catch (err) {
+    alert(err.message);
+    console.error(err);
+  }
+});
+</script>
 </body>
 </html>
