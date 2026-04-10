@@ -1,4 +1,3 @@
-import React from "react";
 import { useEffect, useState } from "react";
 import PageWrapper from "../components/PageWrapper";
 import StatCard from "../components/StatCard";
@@ -9,13 +8,12 @@ import { exportToExcel } from "../utils/exportExcel";
 const API_URL =
   "https://script.google.com/macros/s/AKfycbzw9to4LMuJYeTZSsg_rqgttRcKOaiButv2XvSwDhAR7JEza2yEnJ-42QYR9cH9aw6R/exec";
 
-console.log(API_URL);
-
 export default function SuperBigger() {
   const [apiData, setApiData] = useState([]);
   const [csvData, setCsvData] = useState([]);
   const [audit, setAudit] = useState({});
   const [selectedSeller, setSelectedSeller] = useState(null);
+  const [activeTab, setActiveTab] = useState("csv");
 
   /* ---------------- API ---------------- */
   useEffect(() => {
@@ -98,26 +96,79 @@ export default function SuperBigger() {
         Export Excel
       </button>
 
-      {/* SELLERS LIST */}
-      <div className="grid gap-2">
-        {sellers.map((seller) => {
-          const sellerData = safeAudit[seller] || [];
-          const issues = sellerData.filter((r) => r?.diff).length;
-
-          return (
-            <button
-              key={seller}
-              onClick={() => setSelectedSeller(seller)}
-              className="p-3 bg-white/5 rounded text-left"
-            >
-              <div className="font-bold">{seller}</div>
-              <div className="text-xs text-slate-400">
-                Issues: {issues} / {sellerData.length}
-              </div>
-            </button>
-          );
-        })}
+      {/* TABS */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setActiveTab("csv")}
+          className={`px-4 py-2 rounded ${
+            activeTab === "csv"
+              ? "bg-blue-600 text-white"
+              : "bg-white/5 text-slate-400 hover:text-white"
+          }`}
+        >
+          CSV (Seller ID)
+        </button>
+        <button
+          onClick={() => setActiveTab("api")}
+          className={`px-4 py-2 rounded ${
+            activeTab === "api"
+              ? "bg-blue-600 text-white"
+              : "bg-white/5 text-slate-400 hover:text-white"
+          }`}
+        >
+          API (Shipment)
+        </button>
       </div>
+
+      {/* TAB CONTENT */}
+      {activeTab === "csv" ? (
+        /* SELLERS LIST */
+        <div className="grid gap-2">
+          {sellers.map((seller) => {
+            const sellerData = safeAudit[seller] || [];
+            const issues = sellerData.filter((r) => r?.diff).length;
+
+            return (
+              <button
+                key={seller}
+                onClick={() => setSelectedSeller(seller)}
+                className="p-3 bg-white/5 rounded text-left"
+              >
+                <div className="font-bold">{seller}</div>
+                <div className="text-xs text-slate-400">
+                  Issues: {issues} / {sellerData.length}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        /* API SHIPMENTS LIST */
+        <div className="bg-white/5 rounded-xl border border-white/10 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-slate-400 text-[10px] uppercase">
+              <tr>
+                <th className="p-2">Shipment ID</th>
+                <th>Weight</th>
+                <th>Length</th>
+                <th>Height</th>
+                <th>Width</th>
+              </tr>
+            </thead>
+            <tbody>
+              {apiData.map((r, i) => (
+                <tr key={i} className="border-t border-white/10">
+                  <td className="p-2 font-mono">{r.shipmentId}</td>
+                  <td>{r.weight}</td>
+                  <td>{r.length}</td>
+                  <td>{r.height}</td>
+                  <td>{r.width}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* MODAL */}
       {selectedSeller && (

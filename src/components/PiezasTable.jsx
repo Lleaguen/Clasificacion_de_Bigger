@@ -1,4 +1,3 @@
-import React from "react";
 export default function PiezasTable({ list, orden }) {
   const sorted = [...list].sort((a, b) =>
     orden === "peso"

@@ -1,4 +1,3 @@
-import React from "react";
 export default function StatCard({ label, value, color }) {
   return (
     <div className="bg-white/5 p-4 rounded-xl border border-white/10">
