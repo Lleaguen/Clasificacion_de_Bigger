@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "proxy": "https://script.google.com",
+  "homepage": "https://lleaguen.github.io/Clasificacion_de_Bigger",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build"

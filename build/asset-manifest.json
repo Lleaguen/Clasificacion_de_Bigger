@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.css": "/static/css/main.c9d1777d.css",
-    "main.js": "/static/js/main.b71db5fd.js",
-    "index.html": "/index.html",
-    "main.c9d1777d.css.map": "/static/css/main.c9d1777d.css.map",
-    "main.b71db5fd.js.map": "/static/js/main.b71db5fd.js.map"
+    "main.css": "/Clasificacion_de_Bigger/static/css/main.c9d1777d.css",
+    "main.js": "/Clasificacion_de_Bigger/static/js/main.b71db5fd.js",
+    "index.html": "/Clasificacion_de_Bigger/index.html",
+    "main.c9d1777d.css.map": "/Clasificacion_de_Bigger/static/css/main.c9d1777d.css.map",
+    "main.b71db5fd.js.map": "/Clasificacion_de_Bigger/static/js/main.b71db5fd.js.map"
   },
   "entrypoints": [
     "static/css/main.c9d1777d.css",
