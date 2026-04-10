@@ -2,7 +2,7 @@ name: Deploy React App
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main"] # Se ejecuta cada vez que subís cambios a main
 
 permissions:
   contents: read
@@ -10,9 +10,8 @@ permissions:
   id-token: write
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,21 +19,29 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm install
 
       - name: Build
         run: npm run build
+        env:
+          REACT_APP_API_URL: https://monitor-c0bd.onrender.com
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload build
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './build'
+          path: ./build # React genera el build en esta carpeta
 
-      - name: Deploy
-        uses: actions/deploy-pages@v5
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
