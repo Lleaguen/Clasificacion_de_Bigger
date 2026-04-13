@@ -1,215 +1,156 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import PageWrapper from "../components/PageWrapper";
-import StatCard from "../components/StatCard";
 import { parseCSVFile } from "../utils/csvParser";
-import { buildAudit } from "../utils/auditEngine";
-import { exportToExcel } from "../utils/exportExcel";
-
-const API_URL =
-  "https://script.google.com/macros/s/AKfycbzw9to4LMuJYeTZSsg_rqgttRcKOaiButv2XvSwDhAR7JEza2yEnJ-42QYR9cH9aw6R/exec";
+import { parseXLSXFile } from "../utils/xlsxParser";
 
 export default function SuperBigger() {
-  const [apiData, setApiData] = useState([]);
-  const [csvData, setCsvData] = useState([]);
-  const [audit, setAudit] = useState({});
-  const [selectedSeller, setSelectedSeller] = useState(null);
-  const [activeTab, setActiveTab] = useState("csv");
+  const [tmsData, setTmsData] = useState([]);
+  const [pymData, setPymData] = useState([]);
+  const [activeTab, setActiveTab] = useState("tms");
 
-  /* ---------------- API ---------------- */
-  useEffect(() => {
-    fetch(API_URL)
-      .then((r) => r.json())
-      .then((data) => {
-        const parsed = data.map((r) => ({
-          shipmentId: String(r.shipment_id),
-          weight: Number(r.weight),
-          height: Number(r.height),
-          length: Number(r.length),
-          width: Number(r.width),
-        }));
-
-        setApiData(parsed);
-      })
-      .catch((err) => console.log("API ERROR:", err));
-  }, []);
-
-  /* ---------------- CSV ---------------- */
+  /* ---------------- CSV → TMS ---------------- */
   const handleCSV = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const parsed = await parseCSVFile(file);
-
     const normalized = parsed.map((r) => ({
-      shipmentId: String(r["Shipment ID"]),
-      weight: Number(r["Weight"]),
-      height: Number(r["Height"]),
-      length: Number(r["Length"]),
-      width: Number(r["Width"]),
-      sellerId: String(r["Seller ID"]),
+      shipmentId: String(r["Shipment ID"] ?? ""),
+      weight:     r["Weight"]  ?? "",
+      height:     r["Height"]  ?? "",
+      length:     r["Length"]  ?? "",
+      width:      r["Width"]   ?? "",
+      sellerId:   String(r["Seller ID"] ?? ""),
     }));
-
-    setCsvData(normalized);
+    setTmsData(normalized);
   };
 
-  /* ---------------- BUILD AUDIT ---------------- */
-  useEffect(() => {
-    if (!apiData.length || !csvData.length) return;
+  /* ---------------- XLSX → PYM ---------------- */
+  const handleXLSX = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const parsed = await parseXLSXFile(file);
+    const normalized = parsed.map((r) => ({
+      shipmentId:  String(r["Shipment ID"] ?? r["SHIPMENT ID"] ?? r["shipment_id"] ?? ""),
+      weight:      r["Weight"]      ?? r["WEIGHT"]      ?? "",
+      height:      r["Height"]      ?? r["HEIGHT"]      ?? "",
+      length:      r["Length"]      ?? r["LENGTH"]      ?? "",
+      width:       r["Width"]       ?? r["WIDTH"]        ?? "",
+      description: r["Description"] ?? r["DESCRIPTION"] ?? r["Descripcion"] ?? r["DESCRIPCION"] ?? "",
+    }));
+    setPymData(normalized);
+  };
 
-    try {
-      const result = buildAudit(apiData, csvData);
-      setAudit(result || {});
-    } catch (err) {
-      console.log("AUDIT ERROR:", err);
-    }
-  }, [apiData, csvData]);
-
-  const safeAudit = audit || {};
-  const sellers = Object.keys(safeAudit);
-
-  const totalIssues = Object.values(safeAudit)
-    .flat()
-    .filter((r) => r?.diff).length;
+  const TAB_CLASS = (tab) =>
+    `px-5 py-2 rounded-t font-semibold text-sm transition ${
+      activeTab === tab
+        ? "bg-blue-600 text-white"
+        : "bg-white/5 text-slate-400 hover:text-white"
+    }`;
 
   return (
     <PageWrapper>
-      {/* INPUT */}
-      <input
-        type="file"
-        accept=".csv"
-        onChange={handleCSV}
-        className="mb-4 text-xs text-slate-400"
-      />
-
-      {/* STATS */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <StatCard label="Sellers" value={sellers.length} />
-        <StatCard label="Issues" value={totalIssues} />
-        <StatCard label="Shipments" value={csvData.length} />
+      {/* FILE INPUTS */}
+      <div className="flex flex-wrap gap-6 mb-6">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-400 uppercase tracking-widest">CSV — TMS</span>
+          <input
+            type="file"
+            accept=".csv"
+            onChange={handleCSV}
+            className="text-xs text-slate-300"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-400 uppercase tracking-widest">XLSX — PYM</span>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleXLSX}
+            className="text-xs text-slate-300"
+          />
+        </label>
       </div>
-
-      {/* EXPORT */}
-      <button
-        onClick={() => exportToExcel(Object.values(safeAudit).flat())}
-        className="mb-4 px-4 py-2 bg-green-600 text-white rounded"
-      >
-        Export Excel
-      </button>
 
       {/* TABS */}
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setActiveTab("csv")}
-          className={`px-4 py-2 rounded ${
-            activeTab === "csv"
-              ? "bg-blue-600 text-white"
-              : "bg-white/5 text-slate-400 hover:text-white"
-          }`}
-        >
-          CSV (Seller ID)
+      <div className="flex gap-1 mb-0">
+        <button className={TAB_CLASS("tms")} onClick={() => setActiveTab("tms")}>
+          TMS
         </button>
-        <button
-          onClick={() => setActiveTab("api")}
-          className={`px-4 py-2 rounded ${
-            activeTab === "api"
-              ? "bg-blue-600 text-white"
-              : "bg-white/5 text-slate-400 hover:text-white"
-          }`}
-        >
-          API (Shipment)
+        <button className={TAB_CLASS("pym")} onClick={() => setActiveTab("pym")}>
+          PYM
         </button>
       </div>
 
-      {/* TAB CONTENT */}
-      {activeTab === "csv" ? (
-        /* SELLERS LIST */
-        <div className="grid gap-2">
-          {sellers.map((seller) => {
-            const sellerData = safeAudit[seller] || [];
-            const issues = sellerData.filter((r) => r?.diff).length;
-
-            return (
-              <button
-                key={seller}
-                onClick={() => setSelectedSeller(seller)}
-                className="p-3 bg-white/5 rounded text-left"
-              >
-                <div className="font-bold">{seller}</div>
-                <div className="text-xs text-slate-400">
-                  Issues: {issues} / {sellerData.length}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        /* API SHIPMENTS LIST */
-        <div className="bg-white/5 rounded-xl border border-white/10 overflow-x-auto">
+      {/* TAB PANEL */}
+      <div className="bg-white/5 rounded-b rounded-tr-xl border border-white/10 overflow-x-auto">
+        {activeTab === "tms" ? (
           <table className="w-full text-left text-sm">
-            <thead className="text-slate-400 text-[10px] uppercase">
+            <thead className="text-slate-400 text-[11px] uppercase bg-white/5">
               <tr>
-                <th className="p-2">Shipment ID</th>
-                <th>Weight</th>
-                <th>Length</th>
-                <th>Height</th>
-                <th>Width</th>
+                <th className="p-3">Shipment ID</th>
+                <th className="p-3">Seller ID</th>
+                <th className="p-3">Weight</th>
+                <th className="p-3">Length</th>
+                <th className="p-3">Height</th>
+                <th className="p-3">Width</th>
               </tr>
             </thead>
             <tbody>
-              {apiData.map((r, i) => (
-                <tr key={i} className="border-t border-white/10">
-                  <td className="p-2 font-mono">{r.shipmentId}</td>
-                  <td>{r.weight}</td>
-                  <td>{r.length}</td>
-                  <td>{r.height}</td>
-                  <td>{r.width}</td>
+              {tmsData.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-4 text-center text-slate-500 text-xs">
+                    Sube un archivo CSV para ver los datos
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                tmsData.map((r, i) => (
+                  <tr key={i} className="border-t border-white/10 hover:bg-white/5">
+                    <td className="p-3 font-mono">{r.shipmentId}</td>
+                    <td className="p-3">{r.sellerId}</td>
+                    <td className="p-3">{r.weight}</td>
+                    <td className="p-3">{r.length}</td>
+                    <td className="p-3">{r.height}</td>
+                    <td className="p-3">{r.width}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* MODAL */}
-      {selectedSeller && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center">
-          <div className="bg-[#111] p-4 rounded w-[600px] max-h-[80vh] overflow-auto">
-            <h2 className="text-white mb-2">
-              Seller {selectedSeller}
-            </h2>
-
-            <button
-              className="mb-2 text-red-400"
-              onClick={() => setSelectedSeller(null)}
-            >
-              Close
-            </button>
-
-            {(safeAudit[selectedSeller] || []).map((r, i) => (
-              <div
-                key={i}
-                className={`p-2 mb-2 rounded ${
-                  r?.diff ? "bg-red-500/20" : "bg-green-500/10"
-                }`}
-              >
-                <div className="text-xs text-white">
-                  {r?.shipmentId}
-                </div>
-
-                <div className="text-[10px] text-slate-400">
-                  CSV: {r?.csv?.weight}/{r?.csv?.height}/{r?.csv?.length}/{r?.csv?.width}
-                </div>
-
-                {r?.hasApi && (
-                  <div className="text-[10px] text-slate-400">
-                    API: {r?.api?.weight}/{r?.api?.height}/{r?.api?.length}/{r?.api?.width}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        ) : (
+          <table className="w-full text-left text-sm">
+            <thead className="text-slate-400 text-[11px] uppercase bg-white/5">
+              <tr>
+                <th className="p-3">Shipment ID</th>
+                <th className="p-3">Weight</th>
+                <th className="p-3">Length</th>
+                <th className="p-3">Height</th>
+                <th className="p-3">Width</th>
+                <th className="p-3">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pymData.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-4 text-center text-slate-500 text-xs">
+                    Sube un archivo XLSX para ver los datos
+                  </td>
+                </tr>
+              ) : (
+                pymData.map((r, i) => (
+                  <tr key={i} className="border-t border-white/10 hover:bg-white/5">
+                    <td className="p-3 font-mono">{r.shipmentId}</td>
+                    <td className="p-3">{r.weight}</td>
+                    <td className="p-3">{r.length}</td>
+                    <td className="p-3">{r.height}</td>
+                    <td className="p-3">{r.width}</td>
+                    <td className="p-3">{r.description}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
     </PageWrapper>
   );
 }
