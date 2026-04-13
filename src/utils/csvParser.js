@@ -6,8 +6,9 @@ export const parseCSVFile = (file) => {
       header: true,
       skipEmptyLines: true,
       dynamicTyping: true,
+      worker: true,          // corre en Web Worker, no bloquea el hilo principal
       complete: (results) => resolve(results.data),
-      error: (err) => reject(err)
+      error: (err) => reject(err),
     });
   });
 };
