@@ -154,7 +154,7 @@ export default function SuperBigger() {
   }, []);
 
   /* ---------------- XLSX → PYM ---------------- */
-  const handleXLSX = useCallback(async (e) => {
+/*  const handleXLSX = useCallback(async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setLoadingPym(true);
@@ -173,7 +173,49 @@ export default function SuperBigger() {
     } finally {
       setLoadingPym(false);
     }
-  }, []);
+  }, []);*/
+   const handleXLSX = useCallback(async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  setLoadingPym(true);
+
+  try {
+    const parsed = await parseXLSXFile(file);
+
+    const toNumber = (val) => {
+      const num = parseFloat(String(val).replace(/[^\d.-]/g, ""));
+      return isNaN(num) ? 0 : num;
+    };
+
+    const normalized = parsed.map((r) => ({
+      shipmentId: String(
+        r["SHIPMENT ID"] ??
+        r["SHIPMENT"] ??
+        r["shipment_id"] ??
+        ""
+      ).trim(),
+
+      weight: toNumber(r["peso real"] ?? r["Weight"] ?? r["WEIGHT"]),
+      height: toNumber(r["L3-Real"] ?? r["Height"]),
+      length: toNumber(r["L1-Real"] ?? r["Length"]),
+      width:  toNumber(r["L2-Real"] ?? r["Width"]),
+
+      description:
+        r["Description"] ??
+        r["DESCRIPTION"] ??
+        r["Descripcion"] ??
+        "",
+    }));
+
+    console.log("RAW XLSX:", parsed[0]);
+    console.log("NORMALIZED XLSX:", normalized[0]);
+
+    setPymData(normalized);
+  } finally {
+    setLoadingPym(false);
+  }
+}, []);
 
   /* ---------- Bigger TMS ---------- */
   const biggerBySeller = useMemo(() => {
