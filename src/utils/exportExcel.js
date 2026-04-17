@@ -25,6 +25,7 @@ export const exportComparacion = (comparisonBySeller, filename = "comparacion.xl
       "Width":           r.width,
       "Description":     r.description || "",
       "Categoría Final": r.categoryFinal || "—",
+      "Motivo":          r.reason || "",
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);

@@ -116,6 +116,9 @@ const COLS_COMP = [
     ? <span className={`text-[10px] px-2 py-0.5 rounded-full ${BADGE[r.categoryFinal]}`}>{r.categoryFinal}</span>
     : <span className="text-slate-600 text-[10px]">—</span>
   },
+  { key: "reason", label: "Motivo", render: (r) => (
+    <span className="text-[10px] text-slate-400">{r.reason}</span>
+  )},
 ];
 
 /* ============================================================ */
@@ -184,39 +187,54 @@ export default function SuperBigger() {
     return map;
   }, [tmsData]);
 
-  /* ---------- Comparación ---------- */
+  /* ---------- Comparación ----------
+     Flujo:
+     1. Para cada pieza de PYM que clasifica como BIGGER o SUPER BIGGER:
+        a. Buscar en Bigger TMS (biggerBySeller)
+           - Si está y categoría coincide → ignorar
+           - Si está como BIGGER pero PYM dice SUPER BIGGER → Comparación (mal clasificado)
+        b. Si NO está en Bigger TMS → buscar en TMS crudo
+           - Si está en TMS crudo → clasificar con datos PYM → Comparación (TMS no lo detectó)
+     Seller siempre de TMS crudo.
+  ------------------------------------------------ */
   const comparisonBySeller = useMemo(() => {
     const tmsMap = new Map(tmsData.map((r) => [String(r.shipmentId), r]));
-    const unified = new Map();
 
-    // 1. Bigger TMS
-    for (const tms of tmsData) {
-      const catTms = classify(tms);
-      if (!catTms) continue;
-      unified.set(String(tms.shipmentId), {
-        shipmentId:    tms.shipmentId,
-        seller:        tms.sellerId || "UNKNOWN",
-        weight:        tms.weight,
-        length:        tms.length,
-        height:        tms.height,
-        width:         tms.width,
-        description:   "",
-        categoryFinal: catTms,
-        inTms:         true,
-        inPym:         false,
-      });
+    // Mapa plano de todos los shipments en Bigger TMS: id → categoría
+    const biggerTmsMap = new Map();
+    for (const items of Object.values(biggerBySeller)) {
+      for (const r of items) biggerTmsMap.set(String(r.shipmentId), r.category);
     }
 
-    // 2. PYM: enriquecer o agregar
+    const map = {};
+
     for (const pym of pymData) {
       const catPym = classify(pym);
-      const tms    = tmsMap.get(String(pym.shipmentId));
-      const seller = tms?.sellerId || "SIN SELLER EN TMS";
-      const catTms = tms ? classify(tms) : null;
+      if (!catPym) continue; // PYM no lo clasifica → no interesa
 
-      if (!catPym && !unified.has(String(pym.shipmentId))) continue;
+      const id = String(pym.shipmentId);
+      const tms = tmsMap.get(id);
+      if (!tms) continue; // no existe en TMS crudo → fuera de scope
 
-      unified.set(String(pym.shipmentId), {
+      const seller = tms.sellerId || "UNKNOWN";
+      const catBiggerTms = biggerTmsMap.get(id); // categoría en Bigger TMS (o undefined)
+
+      let reason;
+
+      if (catBiggerTms) {
+        // Está en Bigger TMS
+        if (catBiggerTms === catPym) continue; // coincide → ignorar
+        if (catBiggerTms === "BIGGER" && catPym === "SUPER BIGGER") {
+          reason = "Recategorizado: BIGGER → SUPER BIGGER";
+        } else {
+          continue; // cualquier otro caso → ignorar
+        }
+      } else {
+        // No está en Bigger TMS → TMS no lo detectó
+        reason = "TMS no lo clasificó como Bigger";
+      }
+
+      (map[seller] ??= []).push({
         shipmentId:    pym.shipmentId,
         seller,
         weight:        pym.weight,
@@ -224,20 +242,13 @@ export default function SuperBigger() {
         height:        pym.height,
         width:         pym.width,
         description:   pym.description,
-        categoryFinal: catPym ?? catTms,
-        inTms:         !!tms,
-        inPym:         true,
+        categoryFinal: catPym,
+        reason,
       });
     }
 
-    // 3. Agrupar por seller
-    const map = {};
-    for (const record of unified.values()) {
-      if (!record.categoryFinal) continue;
-      (map[record.seller] ??= []).push(record);
-    }
     return map;
-  }, [pymData, tmsData]);
+  }, [pymData, tmsData, biggerBySeller]);
 
   const TAB_CLASS = (tab) =>
     `px-5 py-2 rounded-t font-semibold text-sm transition ${
@@ -326,7 +337,7 @@ export default function SuperBigger() {
               <p className="text-center text-slate-500 text-xs py-4">
                 {tmsData.length === 0 && pymData.length === 0
                   ? "Sube los archivos CSV y XLSX para comparar"
-                  : "No hay shipments clasificados como Bigger o Super Bigger"}
+                  : "No hay discrepancias entre TMS y PYM"}
               </p>
             ) : (
               <>
