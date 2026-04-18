@@ -147,7 +147,7 @@ export default function SuperBigger() {
           length:      r["Length"]    ?? "",
           width:       r["Width"]     ?? "",
           sellerId:    String(r["Seller ID"] ?? ""),
-          inboundDate: r["Inbound Date"] ?? r["INBOUND DATE"] ?? r["Inbound date"] ?? "",
+          inboundDate: r["Inbound Date Included"] ?? r["INBOUND DATE INCLUDED"] ?? r["Inbound date included"] ?? r["Inbound Date"] ?? r["INBOUND DATE"] ?? "",
         }))
       );
     } finally {
