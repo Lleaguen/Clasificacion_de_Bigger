@@ -19,6 +19,7 @@ export const exportComparacion = (comparisonBySeller, filename = "comparacion.xl
     const rows = items.map((r) => ({
       "Shipment ID":     r.shipmentId,
       "Seller ID":       seller,
+      "Inbound Date":    r.inboundDate || "",
       "Weight":          r.weight,
       "Length":          r.length,
       "Height":          r.height,

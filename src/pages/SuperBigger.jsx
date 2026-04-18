@@ -107,6 +107,7 @@ const COLS_BIGGER = [
 
 const COLS_COMP = [
   { key: "shipmentId",    label: "Shipment ID", mono: true },
+  { key: "inboundDate",   label: "Inbound Date" },
   { key: "weight",        label: "Weight" },
   { key: "length",        label: "Length" },
   { key: "height",        label: "Height" },
@@ -140,12 +141,13 @@ export default function SuperBigger() {
       const parsed = await parseCSVFile(file);
       setTmsData(
         parsed.map((r) => ({
-          shipmentId: String(r["Shipment ID"] ?? ""),
-          weight:     r["Weight"]    ?? "",
-          height:     r["Height"]    ?? "",
-          length:     r["Length"]    ?? "",
-          width:      r["Width"]     ?? "",
-          sellerId:   String(r["Seller ID"] ?? ""),
+          shipmentId:  String(r["Shipment ID"] ?? ""),
+          weight:      r["Weight"]    ?? "",
+          height:      r["Height"]    ?? "",
+          length:      r["Length"]    ?? "",
+          width:       r["Width"]     ?? "",
+          sellerId:    String(r["Seller ID"] ?? ""),
+          inboundDate: r["Inbound Date"] ?? r["INBOUND DATE"] ?? r["Inbound date"] ?? "",
         }))
       );
     } finally {
@@ -284,6 +286,7 @@ export default function SuperBigger() {
         height:        pym.height,
         width:         pym.width,
         description:   pym.description,
+        inboundDate:   tms.inboundDate ?? "",
         categoryFinal: catPym,
         reason,
       });
