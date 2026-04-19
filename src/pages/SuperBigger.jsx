@@ -198,17 +198,18 @@ export default function SuperBigger() {
         ""
       ).trim(),
 
-      weight: toNumber(r["peso real"] ?? r["Weight"] ?? r["WEIGHT"]),
+      weight: toNumber(r["peso real"] ?? r["PESO"] ?? r["Weight"] ?? r["WEIGHT"]),
       height: toNumber(r["L3-Real"] ?? r["Height"]),
       length: toNumber(r["L1-Real"] ?? r["Length"]),
       width:  toNumber(r["L2-Real"] ?? r["Width"]),
 
       description:
+        r["DESCRIPCION"] ??
         r["Description"] ??
         r["DESCRIPTION"] ??
         r["Descripcion"] ??
         "",
-    }));
+    })).filter((r) => r.shipmentId !== "" && r.shipmentId !== "0");
 
     console.log("RAW XLSX:", parsed[0]);
     console.log("NORMALIZED XLSX:", normalized[0]);
