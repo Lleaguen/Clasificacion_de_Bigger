@@ -131,6 +131,8 @@ export default function SuperBigger() {
   const [openSellerComp, setOpenSellerComp] = useState(null);
   const [loadingTms, setLoadingTms]   = useState(false);
   const [loadingPym, setLoadingPym]   = useState(false);
+  const [dateFrom, setDateFrom]       = useState("");
+  const [dateTo, setDateTo]           = useState("");
 
   /* ---------------- CSV → TMS ---------------- */
   const handleCSV = useCallback(async (e) => {
@@ -235,47 +237,44 @@ export default function SuperBigger() {
   /* ---------- Comparación ----------
      Flujo:
      1. Para cada pieza de PYM que clasifica como BIGGER o SUPER BIGGER:
-        a. Buscar en Bigger TMS (biggerBySeller)
+        a. Buscar en Bigger TMS
            - Si está y categoría coincide → ignorar
-           - Si está como BIGGER pero PYM dice SUPER BIGGER → Comparación (mal clasificado)
+           - Si está como BIGGER pero PYM dice SUPER BIGGER → Comparación
         b. Si NO está en Bigger TMS → buscar en TMS crudo
-           - Si está en TMS crudo → clasificar con datos PYM → Comparación (TMS no lo detectó)
-     Seller siempre de TMS crudo.
+           - Si está → clasificar con datos PYM → Comparación
+     Seller e inboundDate siempre de TMS crudo.
   ------------------------------------------------ */
   const comparisonBySeller = useMemo(() => {
-    const tmsMap = new Map(tmsData.map((r) => [String(r.shipmentId), r]));
+    const tmsMap = new Map(tmsData.map((r) => [String(r.shipmentId).trim(), r]));
 
-    // Mapa plano de todos los shipments en Bigger TMS: id → categoría
     const biggerTmsMap = new Map();
     for (const items of Object.values(biggerBySeller)) {
-      for (const r of items) biggerTmsMap.set(String(r.shipmentId), r.category);
+      for (const r of items) biggerTmsMap.set(String(r.shipmentId).trim(), r.category);
     }
 
     const map = {};
 
     for (const pym of pymData) {
       const catPym = classify(pym);
-      if (!catPym) continue; // PYM no lo clasifica → no interesa
+      if (!catPym) continue;
 
-      const id = String(pym.shipmentId);
+      const id  = String(pym.shipmentId).trim();
       const tms = tmsMap.get(id);
-      if (!tms) continue; // no existe en TMS crudo → fuera de scope
+      if (!tms) continue;
 
-      const seller = tms.sellerId || "UNKNOWN";
-      const catBiggerTms = biggerTmsMap.get(id); // categoría en Bigger TMS (o undefined)
+      const seller       = tms.sellerId || "UNKNOWN";
+      const inboundDate  = tms.inboundDate ?? "";
+      const catBiggerTms = biggerTmsMap.get(id);
 
       let reason;
-
       if (catBiggerTms) {
-        // Está en Bigger TMS
-        if (catBiggerTms === catPym) continue; // coincide → ignorar
+        if (catBiggerTms === catPym) continue;
         if (catBiggerTms === "BIGGER" && catPym === "SUPER BIGGER") {
           reason = "Recategorizado: BIGGER → SUPER BIGGER";
         } else {
-          continue; // cualquier otro caso → ignorar
+          continue;
         }
       } else {
-        // No está en Bigger TMS → TMS no lo detectó
         reason = "TMS no lo clasificó como Bigger";
       }
 
@@ -287,7 +286,7 @@ export default function SuperBigger() {
         height:        pym.height,
         width:         pym.width,
         description:   pym.description,
-        inboundDate:   tms.inboundDate ?? "",
+        inboundDate,
         categoryFinal: catPym,
         reason,
       });
@@ -383,16 +382,72 @@ export default function SuperBigger() {
               <p className="text-center text-slate-500 text-xs py-4">
                 {tmsData.length === 0 && pymData.length === 0
                   ? "Sube los archivos CSV y XLSX para comparar"
-                  : "No hay discrepancias entre TMS y PYM"}
+                  : "No hay datos en PYM"}
               </p>
             ) : (
               <>
-                <button
-                  onClick={() => exportComparacion(comparisonBySeller)}
-                  className="mb-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded"
-                >
-                  Exportar Excel
-                </button>
+                {/* Filtro de fechas + exportar */}
+                <div className="flex flex-wrap items-end gap-3 mb-4">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-widest">Desde</span>
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-widest">Hasta</span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white"
+                    />
+                  </label>
+                  <button
+                    onClick={() => {
+                      // Filtrar por rango si hay fechas seleccionadas
+                      const filtered = {};
+                      for (const [seller, items] of Object.entries(comparisonBySeller)) {
+                        const filteredItems = items.filter((r) => {
+                          if (!dateFrom && !dateTo) return true;
+                          if (!r.inboundDate) return false;
+                          // Normalizar fecha: puede venir como string "DD/MM/YYYY", "MM/DD/YYYY" o "YYYY-MM-DD"
+                          const raw = String(r.inboundDate);
+                          const parts = raw.includes("/") ? raw.split("/") : raw.split("-");
+                          let d;
+                          if (parts[0].length === 4) {
+                            d = new Date(raw); // YYYY-MM-DD
+                          } else if (parseInt(parts[1]) > 12) {
+                            d = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`); // DD/MM/YYYY
+                          } else {
+                            d = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`); // MM/DD/YYYY
+                          }
+                          if (isNaN(d)) return true; // si no parsea, incluir
+                          if (dateFrom && d < new Date(dateFrom)) return false;
+                          if (dateTo   && d > new Date(dateTo))   return false;
+                          return true;
+                        });
+                        if (filteredItems.length > 0) filtered[seller] = filteredItems;
+                      }
+                      exportComparacion(filtered);
+                    }}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded"
+                  >
+                    Exportar Excel
+                  </button>
+                  {(dateFrom || dateTo) && (
+                    <button
+                      onClick={() => { setDateFrom(""); setDateTo(""); }}
+                      className="px-3 py-2 bg-white/5 hover:bg-white/10 text-slate-400 text-xs rounded"
+                    >
+                      Limpiar filtro
+                    </button>
+                  )}
+                </div>
+
                 {Object.entries(comparisonBySeller).map(([seller, items]) => (
                   <SellerAccordion
                     key={seller}
