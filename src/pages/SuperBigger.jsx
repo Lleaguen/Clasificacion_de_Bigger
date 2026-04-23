@@ -295,6 +295,47 @@ export default function SuperBigger() {
     return map;
   }, [pymData, tmsData, biggerBySeller]);
 
+  /* ---------- Función auxiliar para parsear fechas ---------- */
+  const parseInboundDate = useCallback((dateStr) => {
+    if (!dateStr) return null;
+    const raw = String(dateStr);
+    const parts = raw.includes("/") ? raw.split("/") : raw.split("-");
+    
+    // Detectar formato
+    if (parts[0].length === 4) {
+      // YYYY-MM-DD
+      return new Date(raw);
+    } else if (parseInt(parts[1]) > 12) {
+      // DD/MM/YYYY
+      return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+    } else {
+      // MM/DD/YYYY
+      return new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
+    }
+  }, []);
+
+  /* ---------- Comparación filtrada por fechas ---------- */
+  const filteredComparisonBySeller = useMemo(() => {
+    if (!dateFrom && !dateTo) return comparisonBySeller;
+
+    const filtered = {};
+    for (const [seller, items] of Object.entries(comparisonBySeller)) {
+      const filteredItems = items.filter((r) => {
+        if (!r.inboundDate) return false;
+        
+        const d = parseInboundDate(r.inboundDate);
+        if (!d || isNaN(d)) return true; // Si no parsea, incluir
+        
+        if (dateFrom && d < new Date(dateFrom)) return false;
+        if (dateTo && d > new Date(dateTo)) return false;
+        return true;
+      });
+      
+      if (filteredItems.length > 0) filtered[seller] = filteredItems;
+    }
+    return filtered;
+  }, [comparisonBySeller, dateFrom, dateTo, parseInboundDate]);
+
   const TAB_CLASS = (tab) =>
     `px-5 py-2 rounded-t font-semibold text-sm transition ${
       activeTab === tab ? "bg-blue-600 text-white" : "bg-white/5 text-slate-400 hover:text-white"
@@ -407,33 +448,7 @@ export default function SuperBigger() {
                     />
                   </label>
                   <button
-                    onClick={() => {
-                      // Filtrar por rango si hay fechas seleccionadas
-                      const filtered = {};
-                      for (const [seller, items] of Object.entries(comparisonBySeller)) {
-                        const filteredItems = items.filter((r) => {
-                          if (!dateFrom && !dateTo) return true;
-                          if (!r.inboundDate) return false;
-                          // Normalizar fecha: puede venir como string "DD/MM/YYYY", "MM/DD/YYYY" o "YYYY-MM-DD"
-                          const raw = String(r.inboundDate);
-                          const parts = raw.includes("/") ? raw.split("/") : raw.split("-");
-                          let d;
-                          if (parts[0].length === 4) {
-                            d = new Date(raw); // YYYY-MM-DD
-                          } else if (parseInt(parts[1]) > 12) {
-                            d = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`); // DD/MM/YYYY
-                          } else {
-                            d = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`); // MM/DD/YYYY
-                          }
-                          if (isNaN(d)) return true; // si no parsea, incluir
-                          if (dateFrom && d < new Date(dateFrom)) return false;
-                          if (dateTo   && d > new Date(dateTo))   return false;
-                          return true;
-                        });
-                        if (filteredItems.length > 0) filtered[seller] = filteredItems;
-                      }
-                      exportComparacion(filtered);
-                    }}
+                    onClick={() => exportComparacion(filteredComparisonBySeller)}
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded"
                   >
                     Exportar Excel
@@ -448,16 +463,22 @@ export default function SuperBigger() {
                   )}
                 </div>
 
-                {Object.entries(comparisonBySeller).map(([seller, items]) => (
-                  <SellerAccordion
-                    key={seller}
-                    seller={seller}
-                    items={items}
-                    isOpen={openSellerComp === seller}
-                    onToggle={() => setOpenSellerComp((s) => s === seller ? null : seller)}
-                    columns={COLS_COMP}
-                  />
-                ))}
+                {Object.keys(filteredComparisonBySeller).length === 0 ? (
+                  <p className="text-center text-slate-500 text-xs py-4">
+                    No hay datos que coincidan con el rango de fechas seleccionado
+                  </p>
+                ) : (
+                  Object.entries(filteredComparisonBySeller).map(([seller, items]) => (
+                    <SellerAccordion
+                      key={seller}
+                      seller={seller}
+                      items={items}
+                      isOpen={openSellerComp === seller}
+                      onToggle={() => setOpenSellerComp((s) => s === seller ? null : seller)}
+                      columns={COLS_COMP}
+                    />
+                  ))
+                )}
               </>
             )}
           </div>
