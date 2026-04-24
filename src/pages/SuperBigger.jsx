@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, memo } from "react";
 import PageWrapper from "../components/PageWrapper";
 import { parseCSVFile } from "../utils/csvParser";
 import { parseXLSXFile } from "../utils/xlsxParser";
-import { exportComparacion } from "../utils/exportExcel";
+import { exportFinal } from "../utils/exportExcel";
 
 /* ---------- clasificación ----------
    Peso en gramos → kg. Dimensiones en cm.
@@ -10,8 +10,8 @@ import { exportComparacion } from "../utils/exportExcel";
 function classify(row) {
   const weightKg = (Number(row.weight) || 0) / 1000;
   const maxDim   = Math.max(Number(row.length) || 0, Number(row.height) || 0, Number(row.width) || 0);
-  if (weightKg >= 50 || maxDim >= 200) return "SUPER BIGGER";
-  if (weightKg >= 30 || maxDim >= 150) return "BIGGER";
+  if (weightKg > 50 || maxDim > 200) return "SUPER BIGGER";
+  if (weightKg > 30 || maxDim > 150) return "BIGGER";
   return null;
 }
 
@@ -131,6 +131,8 @@ export default function SuperBigger() {
   const [openSellerComp, setOpenSellerComp] = useState(null);
   const [loadingTms, setLoadingTms]   = useState(false);
   const [loadingPym, setLoadingPym]   = useState(false);
+  const [descData, setDescData]       = useState([]); // 3er archivo: shipment + descripción
+  const [loadingDesc, setLoadingDesc] = useState(false);
   const [dateFrom, setDateFrom]       = useState("");
   const [dateTo, setDateTo]           = useState("");
 
@@ -222,6 +224,35 @@ export default function SuperBigger() {
   }
 }, []);
 
+  /* ---------------- XLSX → Descripcion (3er archivo) ---------------- */
+  const handleDesc = useCallback(async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoadingDesc(true);
+    try {
+      // Leer el archivo directamente sin filtro de hojas
+      const { read, utils } = await import("xlsx");
+      const buffer = await file.arrayBuffer();
+      const wb = read(buffer, { type: "array", dense: true, cellDates: false, cellNF: false, cellHTML: false });
+      const allRows = [];
+      for (const sheetName of wb.SheetNames) {
+        const rows = utils.sheet_to_json(wb.Sheets[sheetName], { defval: "", raw: true });
+        allRows.push(...rows);
+      }
+      console.log("DESC raw[0]:", allRows[0], "keys:", allRows[0] ? Object.keys(allRows[0]) : []);
+      setDescData(
+        allRows
+          .map((r) => ({
+            shipmentId:  String(r["Shipment ID"] ?? r["SHIPMENT ID"] ?? r["SHIPMENT"] ?? r["Shipment"] ?? r["shipment_id"] ?? "").trim(),
+            description: String(r["Descripcion"] ?? r["DESCRIPCION"] ?? r["Description"] ?? r["DESCRIPTION"] ?? "").trim(),
+          }))
+          .filter((r) => r.shipmentId !== "" && r.shipmentId !== "0")
+      );
+    } finally {
+      setLoadingDesc(false);
+    }
+  }, []);
+
   /* ---------- Bigger TMS ---------- */
   const biggerBySeller = useMemo(() => {
     const map = {};
@@ -300,46 +331,125 @@ export default function SuperBigger() {
     if (!dateStr) return null;
     const raw = String(dateStr);
     const parts = raw.includes("/") ? raw.split("/") : raw.split("-");
-    
-    // Detectar formato
-    if (parts[0].length === 4) {
-      // YYYY-MM-DD
-      return new Date(raw);
-    } else if (parseInt(parts[1]) > 12) {
-      // DD/MM/YYYY
-      return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-    } else {
-      // MM/DD/YYYY
-      return new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
-    }
+    if (parts[0].length === 4) return new Date(raw);
+    else if (parseInt(parts[1]) > 12) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+    else return new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
   }, []);
 
   /* ---------- Comparación filtrada por fechas ---------- */
   const filteredComparisonBySeller = useMemo(() => {
     if (!dateFrom && !dateTo) return comparisonBySeller;
-
     const filtered = {};
     for (const [seller, items] of Object.entries(comparisonBySeller)) {
       const filteredItems = items.filter((r) => {
         if (!r.inboundDate) return false;
-        
         const d = parseInboundDate(r.inboundDate);
-        if (!d || isNaN(d)) return true; // Si no parsea, incluir
-        
+        if (!d || isNaN(d)) return true;
         if (dateFrom && d < new Date(dateFrom)) return false;
-        if (dateTo && d > new Date(dateTo)) return false;
+        if (dateTo   && d > new Date(dateTo))   return false;
         return true;
       });
-      
       if (filteredItems.length > 0) filtered[seller] = filteredItems;
     }
     return filtered;
   }, [comparisonBySeller, dateFrom, dateTo, parseInboundDate]);
 
+  /* ---------- Matcheo por descripción (3er archivo) ----------
+     Para cada shipment en TMS que NO clasifica como Bigger y NO está en PYM,
+     si su descripción (del 3er archivo) coincide con la descripción de un shipment
+     que SÍ clasifica como Bigger/Super Bigger → incluirlo con esa categoría.
+     Resultado: mapa { shipmentId → { category, description } }
+  ------------------------------------------------ */
+  const descMatchMap = useMemo(() => {
+    if (!descData.length) return new Map();
+
+    // Mapa shipmentId → descripción del 3er archivo
+    const descById = new Map(descData.map((r) => [String(r.shipmentId).trim(), r.description]));
+
+    // Mapa descripción → { category, sourceRecord } (de shipments que SÍ clasifican en TMS o PYM)
+    const catByDesc = new Map();
+
+    // Primero cargar categorías de Bigger TMS
+    for (const items of Object.values(biggerBySeller)) {
+      for (const r of items) {
+        const desc = descById.get(String(r.shipmentId).trim());
+        if (desc) {
+          const existing = catByDesc.get(desc);
+          if (!existing || (existing.category === "BIGGER" && r.category === "SUPER BIGGER")) {
+            catByDesc.set(desc, { category: r.category, sourceRecord: r });
+          }
+        }
+      }
+    }
+
+    // Luego cargar categorías de Comparación (PYM reclasifica)
+    for (const items of Object.values(comparisonBySeller)) {
+      for (const r of items) {
+        const desc = descById.get(String(r.shipmentId).trim());
+        if (desc) {
+          const existing = catByDesc.get(desc);
+          if (!existing || (existing.category === "BIGGER" && r.categoryFinal === "SUPER BIGGER")) {
+            catByDesc.set(desc, { category: r.categoryFinal, sourceRecord: r });
+          }
+        }
+      }
+    }
+
+    // Para cada shipment del 3er archivo, ver si su descripción tiene categoría conocida
+    const result = new Map();
+    const tmsById = new Map(tmsData.map((r) => [String(r.shipmentId).trim(), r]));
+    for (const [shipId, desc] of descById) {
+      const match = catByDesc.get(desc);
+      if (match) {
+        const src = match.sourceRecord;
+        result.set(shipId, {
+          category:    match.category,
+          description: desc,
+          tmsRecord:   tmsById.get(shipId),
+          // medidas del shipment fuente que clasificó
+          weight: src.weight,
+          length: src.length,
+          height: src.height,
+          width:  src.width,
+        });
+      }
+    }
+
+    return result;
+  }, [descData, biggerBySeller, comparisonBySeller, tmsData]);
+
   const TAB_CLASS = (tab) =>
     `px-5 py-2 rounded-t font-semibold text-sm transition ${
       activeTab === tab ? "bg-blue-600 text-white" : "bg-white/5 text-slate-400 hover:text-white"
     }`;
+
+  const biggerCount      = useMemo(() => {
+    const ids = new Set();
+    // Bigger TMS
+    for (const items of Object.values(biggerBySeller))
+      for (const r of items) if (r.category === "BIGGER") ids.add(String(r.shipmentId).trim());
+    // Comparación: los que PYM reclasificó como BIGGER (no los que subieron a SUPER BIGGER)
+    for (const items of Object.values(comparisonBySeller))
+      for (const r of items) if (r.categoryFinal === "BIGGER") ids.add(String(r.shipmentId).trim());
+    // Descripción
+    for (const [id, m] of descMatchMap)
+      if (m.category === "BIGGER") ids.add(id);
+    return ids.size;
+  }, [biggerBySeller, comparisonBySeller, descMatchMap]);
+
+  const superBiggerCount = useMemo(() => {
+    const ids = new Set();
+    // Bigger TMS (los que ya eran SUPER BIGGER en TMS)
+    for (const items of Object.values(biggerBySeller))
+      for (const r of items) if (r.category === "SUPER BIGGER") ids.add(String(r.shipmentId).trim());
+    // Comparación: reclasificados como SUPER BIGGER por PYM
+    for (const items of Object.values(comparisonBySeller))
+      for (const r of items) if (r.categoryFinal === "SUPER BIGGER") ids.add(String(r.shipmentId).trim());
+    // Descripción
+    for (const [id, m] of descMatchMap)
+      if (m.category === "SUPER BIGGER") ids.add(id);
+    return ids.size;
+  }, [biggerBySeller, comparisonBySeller, descMatchMap]);
 
   const TMS_COLS = useMemo(() => [
     { key: "shipmentId", label: "Shipment ID", mono: true },
@@ -373,14 +483,29 @@ export default function SuperBigger() {
           <input type="file" accept=".xlsx,.xls" onChange={handleXLSX} className="text-xs text-slate-300" />
           {loadingPym && <span className="text-xs text-blue-400 animate-pulse">Procesando...</span>}
         </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-400 uppercase tracking-widest">XLSX — Descripcion</span>
+          <input type="file" accept=".xlsx,.xls" onChange={handleDesc} className="text-xs text-slate-300" />
+          {loadingDesc && <span className="text-xs text-blue-400 animate-pulse">Procesando...</span>}
+        </label>
       </div>
 
-      {/* TABS */}
-      <div className="flex gap-1 mb-0">
-        <button className={TAB_CLASS("tms")}         onClick={() => setActiveTab("tms")}>TMS</button>
-        <button className={TAB_CLASS("pym")}         onClick={() => setActiveTab("pym")}>PYM</button>
-        <button className={TAB_CLASS("biggertms")}   onClick={() => setActiveTab("biggertms")}>Bigger TMS</button>
-        <button className={TAB_CLASS("comparacion")} onClick={() => setActiveTab("comparacion")}>Comparación</button>
+      {/* TABS + CONTADORES */}
+      <div className="flex items-center justify-between mb-0">
+        <div className="flex gap-1">
+          <button className={TAB_CLASS("tms")}         onClick={() => setActiveTab("tms")}>TMS</button>
+          <button className={TAB_CLASS("pym")}         onClick={() => setActiveTab("pym")}>PYM</button>
+          <button className={TAB_CLASS("biggertms")}   onClick={() => setActiveTab("biggertms")}>Bigger TMS</button>
+          <button className={TAB_CLASS("comparacion")} onClick={() => setActiveTab("comparacion")}>Comparación</button>
+        </div>
+        <div className="flex gap-2 items-center pr-1">
+          <span className={`text-[11px] px-3 py-1 rounded-full font-semibold ${BADGE["BIGGER"]}`}>
+            Bigger: {biggerCount}
+          </span>
+          <span className={`text-[11px] px-3 py-1 rounded-full font-semibold ${BADGE["SUPER BIGGER"]}`}>
+            Super Bigger: {superBiggerCount}
+          </span>
+        </div>
       </div>
 
       {/* TAB PANEL */}
@@ -448,7 +573,7 @@ export default function SuperBigger() {
                     />
                   </label>
                   <button
-                    onClick={() => exportComparacion(filteredComparisonBySeller)}
+                    onClick={() => exportFinal(biggerBySeller, comparisonBySeller, descMatchMap, dateFrom, dateTo)}
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded"
                   >
                     Exportar Excel
