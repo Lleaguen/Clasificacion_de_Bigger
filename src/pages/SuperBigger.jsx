@@ -230,21 +230,22 @@ export default function SuperBigger() {
     if (!file) return;
     setLoadingDesc(true);
     try {
-      // Leer el archivo directamente sin filtro de hojas
-      const { read, utils } = await import("xlsx");
-      const buffer = await file.arrayBuffer();
-      const wb = read(buffer, { type: "array", dense: true, cellDates: false, cellNF: false, cellHTML: false });
-      const allRows = [];
-      for (const sheetName of wb.SheetNames) {
-        const rows = utils.sheet_to_json(wb.Sheets[sheetName], { defval: "", raw: true });
-        allRows.push(...rows);
-      }
-      console.log("DESC raw[0]:", allRows[0], "keys:", allRows[0] ? Object.keys(allRows[0]) : []);
+      const parsed = await new Promise((resolve, reject) => {
+        const Papa = require("papaparse");
+        Papa.parse(file, {
+          header: true,
+          delimiter: ",",
+          skipEmptyLines: true,
+          worker: true,
+          complete: (r) => resolve(r.data),
+          error: reject,
+        });
+      });
       setDescData(
-        allRows
+        parsed
           .map((r) => ({
-            shipmentId:  String(r["Shipment ID"] ?? r["SHIPMENT ID"] ?? r["SHIPMENT"] ?? r["Shipment"] ?? r["shipment_id"] ?? "").trim(),
-            description: String(r["Descripcion"] ?? r["DESCRIPCION"] ?? r["Description"] ?? r["DESCRIPTION"] ?? "").trim(),
+            shipmentId:  String(r["Shipment"] ?? r["Shipment ID"] ?? r["SHIPMENT"] ?? r["shipment_id"] ?? "").trim(),
+            description: String(r["Descripcion"] ?? r["Description"] ?? r["DESCRIPTION"] ?? r["DESCRIPCION"] ?? "").trim(),
           }))
           .filter((r) => r.shipmentId !== "" && r.shipmentId !== "0")
       );
@@ -484,8 +485,8 @@ export default function SuperBigger() {
           {loadingPym && <span className="text-xs text-blue-400 animate-pulse">Procesando...</span>}
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-400 uppercase tracking-widest">XLSX — Descripcion</span>
-          <input type="file" accept=".xlsx,.xls" onChange={handleDesc} className="text-xs text-slate-300" />
+          <span className="text-xs text-slate-400 uppercase tracking-widest">CSV — Descripcion</span>
+          <input type="file" accept=".csv" onChange={handleDesc} className="text-xs text-slate-300" />
           {loadingDesc && <span className="text-xs text-blue-400 animate-pulse">Procesando...</span>}
         </label>
       </div>
