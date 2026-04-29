@@ -92,7 +92,7 @@ export const exportFinal = (biggerBySeller, comparisonBySeller, descMatchMap, da
         "Height":       rec.height,
         "Width":        rec.width,
         "Description":  rec.description || "",
-        "Categoría":    comp ? comp.categoryFinal : tms.category,
+        "Categoría":    comp ? `${comp.categoryFinal} por sistema` : `${tms.category} por sistema`,
         "Motivo":       comp ? comp.reason : "",
       });
     }
@@ -118,7 +118,7 @@ export const exportFinal = (biggerBySeller, comparisonBySeller, descMatchMap, da
         "Height":       r.height,
         "Width":        r.width,
         "Description":  r.description || "",
-        "Categoría":    r.categoryFinal,
+        "Categoría":    `${r.categoryFinal} por sistema`,
         "Motivo":       r.reason || "",
       });
     }
